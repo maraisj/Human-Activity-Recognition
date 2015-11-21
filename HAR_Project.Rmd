@@ -1,0 +1,145 @@
+---
+title: "Human Activity Recognition (HAR)"
+author: "Johannes Marais"
+date: "21 November 2015"
+output: html_document
+---
+## Introduction
+
+The [dataset](http://groupware.les.inf.puc-rio.br/static/WLE/WearableComputing_weight_lifting_exercises_biceps_curl_variations.csv) is of six people who were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl. It was done in five different fashions and is stored in the 'classe' variable in the dataset:
+
+* A: Exactly according to the specification
+* B: Throwing the elbows to the front 
+* C: Lifting the dumbbell only halfway
+* D: Lowering the dumbbell only halfway
+* E: Throwing the hips to the front
+
+The aim of this project is to create a model that given some variables, will be able to predict in which fashion an exercise was done.
+
+##Data processing
+
+In this section, the data will be downloaded, opened and formatted ready to set up the model.
+
+### Setting up the environment and loading the required libraries
+```{r cache=TRUE, message=FALSE} 
+library(caret)
+setwd("~/Documents/Coursera/Specialization/08 Practical machine learning/Project") #Change as required
+set.seed(1) #Set the seed of the predictions to make the results reproducible
+```
+### Downloading the data
+```{r cache=TRUE} 
+setwd("~/Documents/Coursera/Specialization/08 Practical machine learning/Project/Project")
+trainingDataUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingDataUrl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(trainingDataUrl, "pml-training.csv", method="curl")
+download.file(testingDataUrl, "pml-testing.csv", method="curl")
+```
+
+### Loading the data
+```{r cache=TRUE} 
+activity_Data<-read.csv("pml-training.csv",na.strings = c("NA"," ",""))
+activity_Data_test<-read.csv("pml-testing.csv",na.strings = c("NA"," ",""))
+dim(activity_Data)
+dim(activity_Data_test)
+```
+
+### Preprocessing the data
+
+```{r cache=TRUE}
+trainingSetNAMap<-colSums(!is.na(activity_Data)) #Check how many values of NA are in the dataset per column
+table(trainingSetNAMap)
+```
+From this table it can be seen that there are 60 columns from the 160 has 19622 non NA values. The remaining 100 columns have 406 non NA values and these columns will be removed from the dataset that will be analysed.
+```{r cache=TRUE}
+columnsToRemove<- trainingSetNAMap==406 #Check where the rows are with the 406 non NA values for removal
+activity_Data_Subset<- activity_Data[!columnsToRemove]
+dim(activity_Data_Subset)
+```
+There are now only 60 variables in the dataset. Let us take a look at the dataset:
+```{r cache=TRUE}
+names(activity_Data_Subset)
+```
+As can be seen some 'administrative' variables are still in the datasets. These are username, row number, times stamp and the measuring windows. These will be removed next:
+```{r cache=TRUE}
+activity_Data_Subset<- activity_Data_Subset[-(1:7)]
+dim(activity_Data_Subset)
+```
+
+##Building the model
+
+After we have loaded and cleaned the data we are ready to build a model. We are looking for a model, given these 53 variables, it should have an accuracy of more than 99% of predicting the 'classe' variable correctly. 
+### Splitting the data into a training and test set
+
+The data will be split into a training and a test set to verify the accuracy of this model. The training set will be 70% and the test set 30% of the full data set.
+```{r cache=TRUE}
+inTrain<- createDataPartition(activity_Data_Subset$classe,p=0.7,list = FALSE)
+training<- activity_Data_Subset[inTrain,]
+testing<- activity_Data_Subset[-inTrain,]
+dim(training)
+dim(testing)
+```
+
+###Training the model
+
+The Random Forest training model will be used. A low k cross validation was used for this model to save processing time. With k=3, this model takes almost 23 minutes to compute on an older single core pc.
+
+```{r cache=TRUE}
+timeNow<- Sys.time()
+modfit<- train(classe ~ ., data = training, method = "rf", prox = TRUE, 
+      trControl = trainControl(method = "cv", number = 3, allowParallel = TRUE))
+Sys.time()-timeNow
+modfit$finalModel
+```
+
+With k=4, the computation takes 34 minutes.
+```{r cache=TRUE}
+timeNow<- Sys.time()
+modfit4<- train(classe ~ ., data = training, method = "rf", prox = TRUE, 
+      trControl = trainControl(method = "cv", number = 4, allowParallel = TRUE))
+Sys.time()-timeNow
+modfit4$finalModel
+```
+With k=5, the computation takes 48 minutes.
+```{r cache=TRUE}
+timeNow<- Sys.time()
+modfit5<- train(classe ~ ., data = training, method = "rf", prox = TRUE, 
+      trControl = trainControl(method = "cv", number = 5, allowParallel = TRUE))
+Sys.time()-timeNow
+modfit5$finalModel
+```
+The in sample accuracy between the models are shown below:
+```{r cache=TRUE}
+modfit
+modfit4
+modfit5
+```
+###Importance of the different variables
+The importance for the model of k=5 is shown below:
+```{r cache=TRUE,fig.height = 10}
+plot(varImp(modfit5),main="Importance of the variables")
+```
+
+###Testing the models on the test data set.
+The models for k=3,4 and 5 are tested on the test data set which was created in the Data PRocessing section above.
+
+####k=3
+```{r cache=TRUE}
+pred3<-predict(modfit,testing) #Prediction when k=3 on the test set
+confusionMatrix(pred3,testing$classe)
+```
+####k=4
+```{r cache=TRUE}
+pred4<-predict(modfit4,testing) #Prediction when k=4 on the test set
+confusionMatrix(pred4,testing$classe)
+```
+####k=5
+```{r cache=TRUE}
+pred5<-predict(modfit5,testing) #Prediction when k=5 on the test set
+confusionMatrix(pred5,testing$classe)
+```
+As can be seen, all three these models fare well when predicting the test data and comparing them with the actual data. The accuracy improves as the k-folds increases but at a cost of computing time. All three these models have an accuracy better than 99.2% when tested on the test set.
+
+## References
+
+* [Data source](http://groupware.les.inf.puc-rio.br/static/WLE/WearableComputing_weight_lifting_exercises_biceps_curl_variations.csv)
+* [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
